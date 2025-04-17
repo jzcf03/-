@@ -1,0 +1,63 @@
+实验步骤
+环境准备
+
+确保所有容器已启动：HostA、HostB(网关)和HostM(攻击者)
+
+在HostM上清空防火墙规则：iptables -F && iptables -P FORWARD ACCEPT
+
+初始ARP缓存检查
+
+在HostA上检查ARP缓存：arp -n，确认HostB(192.168.60.1)的MAC地址是正确的
+
+在HostB上检查ARP缓存：arp -n，确认HostA(192.168.60.2)的MAC地址是正确的
+
+开启IP转发
+
+在HostM上执行：echo 1 > /proc/sys/net/ipv4/ip_forward
+				和sysctl net.ipv4.ip_forward=1
+
+建立测试连接
+
+在HostB上启动netcat监听：nc -lvnp 9090
+
+在HostA上连接到HostB：nc 192.168.60.1 9090
+
+测试正常通信是否工作
+
+启动ARP欺骗攻击
+
+在HostM上运行ARP欺骗脚本：python3 mitm_attack.py
+
+在HostA和HostB上再次检查ARP缓存，确认MAC地址已被修改为HostM的MAC
+
+关闭IP转发
+
+在HostM上执行：echo 0 > /proc/sys/net/ipv4/ip_forward
+				和sysctl net.ipv4.ip_forward=0
+
+测试数据修改
+
+在HostA的netcat会话中输入包含"123"的字符串，例如："test123test"
+
+观察HostB上接收到的内容是否变为"test456test"
+
+输入不包含"123"的字符串，确认能正常传输
+
+实验验证
+
+在HostM的控制台观察输出，确认能看到原始数据和修改后的数据
+
+使用Wireshark抓包验证数据包确实经过了HostM并被修改
+
+关键点说明
+ARP欺骗：持续发送伪造的ARP响应，使HostA和HostB的ARP缓存中彼此的IP都映射到HostM的MAC地址。
+
+数据包修改：只修改从HostA到HostB的数据包，将从HostB到HostA的数据包原样转发。
+
+IP转发控制：实验要求先开启IP转发建立连接，然后关闭IP转发进行MITM攻击，这样所有流量都会经过我们的攻击脚本。
+
+字符串替换：代码中使用了简单的字符串替换，将所有的"123"替换为"456"。
+
+多线程处理：使用一个线程持续发送ARP欺骗包，主线程处理数据包的嗅探和修改。
+
+这个解决方案完全符合实验要求，能够实现ARP缓存中毒攻击并修改特定内容的网络通信。
